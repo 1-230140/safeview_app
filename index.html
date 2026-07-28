@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SafeView PPE Scanner</title>
+  <meta name="theme-color" content="#f6f7f2">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="alert" class="alert">Unsafe condition detected</div>
+
+  <header class="topbar">
+    <div>
+      <div class="brand">SafeView</div>
+      <div class="sub">YOLOv8 PPE safety scanner</div>
+    </div>
+    <div class="top-actions">
+      <span id="modelState" class="pill">Model idle</span>
+      <button id="installBtn" class="ghost hidden">Install</button>
+      <button class="ghost" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="stage">
+      <div class="tabs">
+        <button id="liveTab" class="tab active" onclick="setMode('live')">Camera</button>
+        <button id="photoTab" class="tab" onclick="setMode('photo')">Photo</button>
+      </div>
+
+      <div id="livePane">
+        <div id="videoBox" class="viewer">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="liveCanvas"></canvas>
+          <div id="cameraEmpty" class="empty">Start camera to scan a workplace area.</div>
+          <span id="liveBadge" class="badge">Standby</span>
+        </div>
+        <div class="controls">
+          <button id="startBtn" class="primary" onclick="startCamera()">Start camera</button>
+          <button id="scanBtn" onclick="scanCamera()" disabled>Scan now</button>
+          <button id="stopBtn" onclick="stopCamera()" disabled>Stop</button>
+          <select id="interval" onchange="setAutoScan()">
+            <option value="0">Auto off</option>
+            <option value="5000">Every 5s</option>
+            <option value="10000" selected>Every 10s</option>
+            <option value="30000">Every 30s</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="photoPane" class="hidden">
+        <label class="drop">
+          <input id="fileInput" type="file" accept="image/*" capture="environment" onchange="loadPhoto(event)">
+          <span>Tap to take or upload a photo</span>
+        </label>
+        <div id="photoWrap" class="viewer hidden">
+          <img id="photo" alt="Uploaded safety scan">
+          <canvas id="photoCanvas"></canvas>
+          <span id="photoBadge" class="badge">Ready</span>
+        </div>
+        <div class="controls">
+          <button class="primary" onclick="scanPhoto()">Scan photo</button>
+          <button onclick="clearPhoto()">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div id="verdict" class="verdict idle">
+        <strong>Standby</strong>
+        <span>Scan a camera frame or photo.</span>
+      </div>
+      <div class="stats">
+        <div><strong id="total">0</strong><span>Total</span></div>
+        <div><strong id="safe">0</strong><span>Safe</span></div>
+        <div><strong id="warn">0</strong><span>Warn</span></div>
+        <div><strong id="unsafe">0</strong><span>Unsafe</span></div>
+      </div>
+      <h2>Findings</h2>
+      <div id="findings" class="list muted">No detections yet.</div>
+      <h2>Activity</h2>
+      <div id="log" class="log"></div>
+      <div class="controls two">
+        <button onclick="exportCsv()">Export CSV</button>
+        <button onclick="exportJson()">Export JSON</button>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

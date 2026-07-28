@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeView Login</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>SafeView</h1>
+    <p>YOLOv8 PPE safety scanner</p>
+    <div id="loginError" class="error hidden"></div>
+    <label>Username<input id="username" autocomplete="username" value="admin"></label>
+    <label>Password<input id="password" type="password" autocomplete="current-password" value="safeview2025"></label>
+    <button class="primary wide" onclick="login()">Sign in</button>
+    <small>Default: admin / safeview2025</small>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
