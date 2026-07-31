@@ -6,8 +6,8 @@ const MODEL_PATH = "models/ppe-yolo.onnx";
 const INPUT = 640;
 const CONF = 0.4;
 const IOU = 0.45;
-const CLASS_NAMES = ["damage","dangerous-to-step","good-condition","good-placement","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","proper-hr-attire","proper-lifting","safe","safety-helmet","safety-line-fading","safety-line-good-condition","safety-shoes","safety-vest","unsafe","worn-out"];
-const UNSAFE = new Set(["damage","dangerous-to-step","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","safety-line-fading","unsafe","worn-out"]);
+const CLASS_NAMES = ["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","safety-glove","safety-helmet","safety-shoes","welding-glass","unsafe-area","damage","forklift"];
+const UNSAFE = new Set(["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","unsafe-area","damage"]);
 
 let session, stream, photoBase64, autoTimer;
 let history = [];
