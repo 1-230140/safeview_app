@@ -4,10 +4,10 @@ const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) :
 
 const MODEL_PATH = "models/ppe-yolo.onnx";
 const INPUT = 640;
-const CONF = 0.4;
+const CONF = 0.1; // TEMP: lowered from 0.4 for debugging — raise back once class mapping is confirmed
 const IOU = 0.45;
-const CLASS_NAMES = ["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","safety-glove","safety-helmet","safety-shoes","welding-glass","unsafe-area","damage","forklift"];
-const UNSAFE = new Set(["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","unsafe-area","damage"]);
+const CLASS_NAMES = ["damage","dangerous-to-step","good-condition","good-placement","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","proper-hr-attire","proper-lifting","safe","safety-helmet","safety-line-fading","safety-line-good-condition","safety-shoes","safety-vest","unsafe","worn-out"];
+const UNSAFE = new Set(["damage","dangerous-to-step","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","safety-line-fading","unsafe","worn-out"]);
 
 let session, stream, photoBase64, autoTimer;
 let history = [];
@@ -66,7 +66,7 @@ function setMode(mode) {
 async function loadModel() {
   if (session) return session;
   $("modelState").textContent = "Loading model";
-  session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["wasm"] });
+  session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["webgl", "wasm"] });
   $("modelState").textContent = "Model ready";
   return session;
 }
@@ -172,12 +172,14 @@ async function detect(src, w, h) {
   const y = out[s.outputNames[0]];
   const preds = y.dims[y.dims.length - 1];
   const boxes = [];
+  let bestScore = 0, bestCls = -1; // TEMP: debug tracking
   for (let i = 0; i < preds; i++) {
     let score = 0, cls = -1;
     for (let c = 0; c < CLASS_NAMES.length; c++) {
       const v = y.data[(4 + c) * preds + i];
       if (v > score) { score = v; cls = c; }
     }
+    if (score > bestScore) { bestScore = score; bestCls = cls; } // TEMP: debug tracking
     if (score < CONF) continue;
     const cx = y.data[i], cy = y.data[preds + i], bw = y.data[2 * preds + i], bh = y.data[3 * preds + i];
     boxes.push({
@@ -188,6 +190,7 @@ async function detect(src, w, h) {
       score, label: CLASS_NAMES[cls] || `class_${cls}`
     });
   }
+  console.log(`[debug] best raw score this frame: ${bestScore.toFixed(3)} -> class "${CLASS_NAMES[bestCls] || bestCls}" (index ${bestCls})`); // TEMP: remove after debugging
   return nms(boxes);
 }
 
