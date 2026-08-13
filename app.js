@@ -4,10 +4,10 @@ const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) :
 
 const MODEL_PATH = "models/ppe-yolo.onnx";
 const INPUT = 640;
-const CONF = 0.1; // TEMP: lowered from 0.4 for debugging — raise back once class mapping is confirmed
+const CONF = 0.3; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
 const IOU = 0.45;
-const CLASS_NAMES = ["damage","dangerous-to-step","good-condition","good-placement","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","proper-hr-attire","proper-lifting","safe","safety-helmet","safety-line-fading","safety-line-good-condition","safety-shoes","safety-vest","unsafe","worn-out"];
-const UNSAFE = new Set(["damage","dangerous-to-step","improper-placement","incident-report","no-safety-gloves","no-safety-helmet","no-safety-vest","safety-line-fading","unsafe","worn-out"]);
+const CLASS_NAMES = ["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","safety-glove","safety-helmet","safety-shoes","welding-glass","unsafe-area","damage","forklift"];
+const UNSAFE = new Set(["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","unsafe-area","damage"]);
 
 let session, stream, photoBase64, autoTimer;
 let history = [];
@@ -306,7 +306,8 @@ function download(name, text, type) {
   a.click();
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// Service worker disabled during testing — was causing stale app.js to be served instead of the latest version.
+// if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 let promptEvent;
 window.addEventListener("beforeinstallprompt", e => {
   promptEvent = e;
