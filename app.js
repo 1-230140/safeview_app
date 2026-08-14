@@ -307,7 +307,7 @@ function download(name, text, type) {
 }
 
 // Service worker disabled during testing — was causing stale app.js to be served instead of the latest version.
-// if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 let promptEvent;
 window.addEventListener("beforeinstallprompt", e => {
   promptEvent = e;
