@@ -21,8 +21,13 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const url = event.request.url;
 
+  // never intercept non-GET requests (POST/PUT/DELETE) - Cache API can't store them,
+  // and API calls like Supabase inserts should always go straight to network
+  if (event.request.method !== "GET") {
+    return; // let the browser handle it normally, don't touch it
+  }
+
   if (url.includes(MODEL_ASSET)) {
-    // model rarely changes - cache-first is fine here
     event.respondWith(
       caches.match(event.request).then(hit => hit || fetch(event.request).then(res => {
         const clone = res.clone();
@@ -33,7 +38,6 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // app files - network-first so you always get the latest during active development
   event.respondWith(
     fetch(event.request)
       .then(res => {
