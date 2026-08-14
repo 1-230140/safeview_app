@@ -1,4 +1,4 @@
-const CACHE_NAME = "safeview-v2"; // bump this version number every time you deploy changes
+const CACHE_NAME = "safeview-v3"; // bump this version number every time you deploy changes
 const STATIC_ASSETS = ["login.html", "index.html", "style.css", "app.js", "manifest.json"];
 const MODEL_ASSET = "models/ppe-yolo.onnx";
 
