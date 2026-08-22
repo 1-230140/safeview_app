@@ -4,7 +4,7 @@ const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) :
 
 const MODEL_PATH = "models/ppe-yolo.onnx";
 const INPUT = 640;
-const CONF = 0.3; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
+const CONF = 0.15; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
 const IOU = 0.45;
 const CLASS_NAMES = ["safety-glove","safety-helmet","safety-shoes","unsafe-area","damage","forklift","safety-vest","cardboard-box","safety-cone"];
 const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
@@ -37,9 +37,12 @@ async function login() {
   try {
     let user = null;
     if (db) {
-      const res = await db.from("users").select("id, username, role, password_hash").eq("username", username).maybeSingle();
-      if (res.error) throw res.error;
-      if (res.data && await sha256Hex(password) === res.data.password_hash) user = res.data;
+      try {
+        const res = await db.from("users").select("id, username, role, password_hash").eq("username", username).maybeSingle();
+        if (!res.error && res.data && await sha256Hex(password) === res.data.password_hash) user = res.data;
+      } catch (_) {
+        // Allow the local demo login to work when Supabase is unreachable.
+      }
     }
     if (!user && username === "admin" && password === "safeview2025") user = { id: null, username, role: "admin" };
     if (!user) throw new Error("Invalid username or password.");
