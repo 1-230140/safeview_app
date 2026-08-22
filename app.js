@@ -6,8 +6,8 @@ const MODEL_PATH = "models/ppe-yolo.onnx";
 const INPUT = 640;
 const CONF = 0.3; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
 const IOU = 0.45;
-const CLASS_NAMES = ["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","safety-glove","safety-helmet","safety-shoes","welding-glass","unsafe-area","damage","forklift"];
-const UNSAFE = new Set(["no-safety-glove","no-safety-helmet","no-safety-shoes","no-welding-glass","unsafe-area","damage"]);
+const CLASS_NAMES = ["safety-glove","safety-helmet","safety-shoes","unsafe-area","damage","forklift","safety-vest","cardboard-box","safety-cone"];
+const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
 
 let session, stream, photoBase64, autoTimer;
 let history = [];
