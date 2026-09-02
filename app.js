@@ -13,6 +13,7 @@ let session, stream, photoBase64, autoTimer;
 let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
 let lastScan = null;
+let lastFps = 0;
 
 const $ = id => document.getElementById(id);
 
@@ -141,8 +142,11 @@ async function analyzeImage(sourceEl, source, canvas, badge) {
     await loadModel();
     const width = sourceEl.videoWidth || sourceEl.naturalWidth || sourceEl.width;
     const height = sourceEl.videoHeight || sourceEl.naturalHeight || sourceEl.height;
+    const started = performance.now();
     const detections = await detect(sourceEl, width, height);
-    lastScan = { sourceEl, width, height, detections };
+    const elapsed = Math.max(1, performance.now() - started);
+    lastFps = 1000 / elapsed;
+    lastScan = { sourceEl, width, height, detections, fps: lastFps };
     draw(canvas, detections, width, height);
     applyResult(classify(detections), source, badge);
   } catch (e) {
@@ -253,7 +257,8 @@ function evaluateDetections(detections, truth, iouThreshold = 0.5) {
   const f1 = 2 * precision * recall / (precision + recall || 1);
   const accuracy = tp / (tp + fp + fn || 1);
   const meanIou = matches.reduce((sum, m) => sum + m.iou, 0) / (matches.length || 1);
-  return { tp, fp, fn, precision, recall, f1, accuracy, meanIou };
+  const map50 = precision * recall;
+  return { tp, fp, fn, precision, recall, f1, accuracy, meanIou, map50 };
 }
 
 function formatPercent(value) {
@@ -267,6 +272,8 @@ function renderEval(metrics, detectionCount, truthCount) {
     [formatPercent(metrics.recall), "Recall"],
     [formatPercent(metrics.f1), "F1"],
     [formatPercent(metrics.meanIou), "Mean IoU"],
+    [formatPercent(metrics.map50), "mAP@50"],
+    [lastScan && lastScan.fps ? lastScan.fps.toFixed(1) : "-", "FPS"],
     [`${detectionCount}/${truthCount}`, "Detections"]
   ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
   $("evalNotes").textContent = `TP ${metrics.tp}, FP ${metrics.fp}, FN ${metrics.fn}. IoU match threshold: 50%.`;
@@ -308,11 +315,40 @@ function makeTransformCanvas(sourceEl, width, height, type) {
   } else if (type === "color") {
     ctx.filter = "saturate(145%) contrast(115%) brightness(92%)";
     ctx.drawImage(sourceEl, 0, 0, width, height);
+  } else if (type === "normalize") {
+    ctx.filter = "contrast(120%) brightness(105%)";
+    ctx.drawImage(sourceEl, 0, 0, width, height);
+  } else if (type === "edges") {
+    ctx.filter = "grayscale(1) contrast(180%)";
+    ctx.drawImage(sourceEl, 0, 0, width, height);
+    applyEdgeFilter(ctx, width, height);
   } else {
     ctx.filter = "blur(1.2px)";
     ctx.drawImage(sourceEl, 0, 0, width, height);
   }
   return c;
+}
+
+function applyEdgeFilter(ctx, width, height) {
+  const src = ctx.getImageData(0, 0, width, height);
+  const out = ctx.createImageData(width, height);
+  const kernel = [-1, -1, -1, -1, 8, -1, -1, -1, -1];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let sum = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const i = ((y + ky) * width + (x + kx)) * 4;
+          const gray = (src.data[i] + src.data[i + 1] + src.data[i + 2]) / 3;
+          sum += gray * kernel[(ky + 1) * 3 + (kx + 1)];
+        }
+      }
+      const o = (y * width + x) * 4;
+      const v = Math.max(0, Math.min(255, sum + 128));
+      out.data[o] = v; out.data[o + 1] = v; out.data[o + 2] = v; out.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
 }
 
 async function runTransformTests() {
@@ -324,14 +360,18 @@ async function runTransformTests() {
       ["rotate", "Rotate"],
       ["slant", "Slant"],
       ["color", "Color shift"],
-      ["blur", "Light blur"]
+      ["normalize", "Normalization"],
+      ["edges", "Convolution edges"],
+      ["blur", "Gaussian blur"]
     ];
     out.innerHTML = `<div class="muted">Running variation tests...</div>`;
     const rows = [];
     for (const [type, label] of tests) {
       const canvas = makeTransformCanvas(lastScan.sourceEl, lastScan.width, lastScan.height, type);
+      const started = performance.now();
       const detections = await detect(canvas, lastScan.width, lastScan.height);
-      rows.push(`<div class="finding">${label}: ${detections.length} detection(s)</div>`);
+      const fps = 1000 / Math.max(1, performance.now() - started);
+      rows.push(`<div class="finding">${label}: ${detections.length} detection(s), ${fps.toFixed(1)} FPS</div>`);
     }
     out.innerHTML = rows.join("");
     log("Variation tests completed.");
