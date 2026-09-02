@@ -2,7 +2,7 @@ const SUPABASE_URL = "https://zobfhaykmvqsdtdkopuc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-YgL8OtMraWknloMv-YWjA_EY1qhBts";
 const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-const MODEL_PATH = "ppe-yolo-3k.onnx";
+const MODEL_PATH = "models/ppe-yolo-3k.onnx";
 const INPUT = 640;
 const CONF = 0.15; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
 const IOU = 0.45;
@@ -12,6 +12,7 @@ const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safet
 let session, stream, photoBase64, autoTimer;
 let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
+let lastScan = null;
 
 const $ = id => document.getElementById(id);
 
@@ -141,6 +142,7 @@ async function analyzeImage(sourceEl, source, canvas, badge) {
     const width = sourceEl.videoWidth || sourceEl.naturalWidth || sourceEl.width;
     const height = sourceEl.videoHeight || sourceEl.naturalHeight || sourceEl.height;
     const detections = await detect(sourceEl, width, height);
+    lastScan = { sourceEl, width, height, detections };
     draw(canvas, detections, width, height);
     applyResult(classify(detections), source, badge);
   } catch (e) {
@@ -212,6 +214,130 @@ function overlap(a, b) {
   const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
   const aa = (a.x2 - a.x1) * (a.y2 - a.y1), ba = (b.x2 - b.x1) * (b.y2 - b.y1);
   return inter / (aa + ba - inter || 1);
+}
+
+function parseGroundTruth() {
+  const input = $("truthInput");
+  if (!input) return [];
+  return input.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, index) => {
+    const [label, x1, y1, x2, y2] = line.split(",").map(v => v.trim());
+    const box = { label, x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2) };
+    if (!label || [box.x1, box.y1, box.x2, box.y2].some(Number.isNaN)) {
+      throw new Error(`Invalid ground truth line ${index + 1}. Use label,x1,y1,x2,y2.`);
+    }
+    return box;
+  });
+}
+
+function evaluateDetections(detections, truth, iouThreshold = 0.5) {
+  const matches = [];
+  const usedTruth = new Set();
+  const sorted = [...detections].sort((a, b) => b.score - a.score);
+  for (const det of sorted) {
+    let best = { index: -1, iou: 0 };
+    truth.forEach((gt, index) => {
+      if (usedTruth.has(index) || gt.label !== det.label) return;
+      const iou = overlap(det, gt);
+      if (iou > best.iou) best = { index, iou };
+    });
+    if (best.index >= 0 && best.iou >= iouThreshold) {
+      usedTruth.add(best.index);
+      matches.push({ det, gt: truth[best.index], iou: best.iou });
+    }
+  }
+  const tp = matches.length;
+  const fp = Math.max(0, detections.length - tp);
+  const fn = Math.max(0, truth.length - tp);
+  const precision = tp / (tp + fp || 1);
+  const recall = tp / (tp + fn || 1);
+  const f1 = 2 * precision * recall / (precision + recall || 1);
+  const accuracy = tp / (tp + fp + fn || 1);
+  const meanIou = matches.reduce((sum, m) => sum + m.iou, 0) / (matches.length || 1);
+  return { tp, fp, fn, precision, recall, f1, accuracy, meanIou };
+}
+
+function formatPercent(value) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function renderEval(metrics, detectionCount, truthCount) {
+  $("evalMetrics").innerHTML = [
+    [formatPercent(metrics.accuracy), "Accuracy"],
+    [formatPercent(metrics.precision), "Precision"],
+    [formatPercent(metrics.recall), "Recall"],
+    [formatPercent(metrics.f1), "F1"],
+    [formatPercent(metrics.meanIou), "Mean IoU"],
+    [`${detectionCount}/${truthCount}`, "Detections"]
+  ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
+  $("evalNotes").textContent = `TP ${metrics.tp}, FP ${metrics.fp}, FN ${metrics.fn}. IoU match threshold: 50%.`;
+}
+
+function evaluateLastScan() {
+  try {
+    if (!lastScan) throw new Error("Scan a camera frame or photo first.");
+    const truth = parseGroundTruth();
+    if (!truth.length) throw new Error("Enter at least one ground truth box.");
+    const metrics = evaluateDetections(lastScan.detections, truth);
+    renderEval(metrics, lastScan.detections.length, truth.length);
+    log("Evaluation metrics updated.");
+  } catch (e) {
+    $("evalNotes").textContent = e.message || "Evaluation failed.";
+  }
+}
+
+function makeTransformCanvas(sourceEl, width, height, type) {
+  const c = document.createElement("canvas");
+  c.width = width; c.height = height;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#727272";
+  ctx.fillRect(0, 0, width, height);
+  if (type === "resize-50") {
+    const small = document.createElement("canvas");
+    small.width = Math.max(1, Math.round(width * 0.5));
+    small.height = Math.max(1, Math.round(height * 0.5));
+    small.getContext("2d").drawImage(sourceEl, 0, 0, width, height, 0, 0, small.width, small.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(small, 0, 0, small.width, small.height, 0, 0, width, height);
+  } else if (type === "rotate") {
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(-12 * Math.PI / 180);
+    ctx.drawImage(sourceEl, -width / 2, -height / 2, width, height);
+  } else if (type === "slant") {
+    ctx.transform(1, 0.12, -0.08, 1, width * 0.05, -height * 0.05);
+    ctx.drawImage(sourceEl, 0, 0, width, height);
+  } else if (type === "color") {
+    ctx.filter = "saturate(145%) contrast(115%) brightness(92%)";
+    ctx.drawImage(sourceEl, 0, 0, width, height);
+  } else {
+    ctx.filter = "blur(1.2px)";
+    ctx.drawImage(sourceEl, 0, 0, width, height);
+  }
+  return c;
+}
+
+async function runTransformTests() {
+  const out = $("transformResults");
+  try {
+    if (!lastScan) throw new Error("Scan a photo first.");
+    const tests = [
+      ["resize-50", "Resize 50%"],
+      ["rotate", "Rotate"],
+      ["slant", "Slant"],
+      ["color", "Color shift"],
+      ["blur", "Light blur"]
+    ];
+    out.innerHTML = `<div class="muted">Running variation tests...</div>`;
+    const rows = [];
+    for (const [type, label] of tests) {
+      const canvas = makeTransformCanvas(lastScan.sourceEl, lastScan.width, lastScan.height, type);
+      const detections = await detect(canvas, lastScan.width, lastScan.height);
+      rows.push(`<div class="finding">${label}: ${detections.length} detection(s)</div>`);
+    }
+    out.innerHTML = rows.join("");
+    log("Variation tests completed.");
+  } catch (e) {
+    out.innerHTML = `<div class="muted">${e.message || "Variation test failed."}</div>`;
+  }
 }
 
 function classify(detections) {

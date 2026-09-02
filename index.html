@@ -86,6 +86,28 @@
         <button onclick="exportCsv()">Export CSV</button>
         <button onclick="exportJson()">Export JSON</button>
       </div>
+
+      <h2>Evaluation</h2>
+      <div class="eval-box">
+        <label class="field">
+          <span>Ground truth boxes</span>
+          <textarea id="truthInput" rows="5" placeholder="label,x1,y1,x2,y2&#10;safety-helmet,120,80,260,210"></textarea>
+        </label>
+        <div class="controls two">
+          <button onclick="evaluateLastScan()">Evaluate scan</button>
+          <button onclick="runTransformTests()">Variation test</button>
+        </div>
+        <div id="evalMetrics" class="metric-grid">
+          <div><strong>-</strong><span>Accuracy</span></div>
+          <div><strong>-</strong><span>Precision</span></div>
+          <div><strong>-</strong><span>Recall</span></div>
+          <div><strong>-</strong><span>F1</span></div>
+          <div><strong>-</strong><span>Mean IoU</span></div>
+          <div><strong>-</strong><span>Detections</span></div>
+        </div>
+        <div id="evalNotes" class="muted">Scan a photo, enter expected boxes, then evaluate.</div>
+        <div id="transformResults" class="list"></div>
+      </div>
     </aside>
   </main>
 
