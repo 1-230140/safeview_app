@@ -89,6 +89,21 @@
 
       <h2>Evaluation</h2>
       <div class="eval-box">
+        <div class="controls eval-tools">
+          <select id="truthLabel">
+            <option value="safety-cone">safety-cone</option>
+            <option value="safety-helmet">safety-helmet</option>
+            <option value="safety-vest">safety-vest</option>
+            <option value="safety-glove">safety-glove</option>
+            <option value="safety-shoes">safety-shoes</option>
+            <option value="unsafe-area">unsafe-area</option>
+            <option value="damage">damage</option>
+            <option value="forklift">forklift</option>
+            <option value="cardboard-box">cardboard-box</option>
+          </select>
+          <button onclick="toggleTruthMode()" id="truthModeBtn">Draw box</button>
+          <button onclick="clearTruthBoxes()">Clear boxes</button>
+        </div>
         <label class="field">
           <span>Ground truth boxes</span>
           <textarea id="truthInput" rows="5" placeholder="label,x1,y1,x2,y2&#10;safety-helmet,120,80,260,210"></textarea>
