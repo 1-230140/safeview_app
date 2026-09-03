@@ -3,13 +3,14 @@ const SUPABASE_KEY = "sb_publishable_-YgL8OtMraWknloMv-YWjA_EY1qhBts";
 const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const MODEL_PATH = "models/ppe-yolo-3k.onnx";
+const YOLOV10_PATH = "models/yolov10-best.onnx";
 const INPUT = 640;
 const CONF = 0.15; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
 const IOU = 0.45;
 const CLASS_NAMES = ["safety-glove","safety-helmet","safety-shoes","unsafe-area","damage","forklift","safety-vest","cardboard-box","safety-cone"];
 const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
 
-let session, stream, photoBase64, autoTimer;
+let session, yolo10Session, stream, photoBase64, autoTimer;
 let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
 let lastScan = null;
@@ -78,6 +79,12 @@ async function loadModel() {
   session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["webgl", "wasm"] });
   $("modelState").textContent = "Model ready";
   return session;
+}
+
+async function loadYolo10Model() {
+  if (yolo10Session) return yolo10Session;
+  yolo10Session = await ort.InferenceSession.create(YOLOV10_PATH, { executionProviders: ["webgl", "wasm"] });
+  return yolo10Session;
 }
 
 async function startCamera() {
@@ -157,6 +164,7 @@ async function analyzeImage(sourceEl, source, canvas, badge) {
     draw(canvas, detections, width, height);
     drawTruthBoxes(canvas);
     applyResult(classify(detections), source, badge);
+    if (source === "photo") compareYoloModels(sourceEl, width, height, detections);
   } catch (e) {
     log("Detection failed: " + (e.message || e), "unsafe");
   }
@@ -184,9 +192,14 @@ function preprocess(src, w, h) {
 
 async function detect(src, w, h) {
   const s = await loadModel();
+  return detectWithSession(s, src, w, h, "yolov8");
+}
+
+async function detectWithSession(s, src, w, h, modelType = "yolov8") {
   const prep = preprocess(src, w, h);
   const out = await s.run({ [s.inputNames[0]]: prep.tensor });
   const y = out[s.outputNames[0]];
+  if (modelType === "yolov10") return parseYolo10Output(y, w, h, prep);
   const preds = y.dims[y.dims.length - 1];
   const boxes = [];
   let bestScore = 0, bestCls = -1; // TEMP: debug tracking
@@ -209,6 +222,55 @@ async function detect(src, w, h) {
   }
   console.log(`[debug] best raw score this frame: ${bestScore.toFixed(3)} -> class "${CLASS_NAMES[bestCls] || bestCls}" (index ${bestCls})`); // TEMP: remove after debugging
   return nms(boxes);
+}
+
+function parseYolo10Output(y, w, h, prep) {
+  const boxes = [];
+  const dims = y.dims;
+  const rows = dims[dims.length - 2] || 0;
+  const cols = dims[dims.length - 1] || 0;
+  if (cols < 6) return boxes;
+  for (let i = 0; i < rows; i++) {
+    const offset = i * cols;
+    const score = y.data[offset + 4];
+    if (score < CONF) continue;
+    const cls = Math.round(y.data[offset + 5]);
+    boxes.push({
+      x1: Math.max(0, (y.data[offset] - prep.dx) / prep.scale),
+      y1: Math.max(0, (y.data[offset + 1] - prep.dy) / prep.scale),
+      x2: Math.min(w, (y.data[offset + 2] - prep.dx) / prep.scale),
+      y2: Math.min(h, (y.data[offset + 3] - prep.dy) / prep.scale),
+      score,
+      label: CLASS_NAMES[cls] || `class_${cls}`
+    });
+  }
+  return nms(boxes);
+}
+
+async function compareYoloModels(sourceEl, width, height, yolo8Detections) {
+  const out = $("modelCompare");
+  if (!out) return;
+  out.className = "list";
+  out.innerHTML = `<div class="muted">Running YOLOv10 comparison...</div>`;
+  try {
+    const model = await loadYolo10Model();
+    const started = performance.now();
+    const yolo10Detections = await detectWithSession(model, sourceEl, width, height, "yolov10");
+    const fps = 1000 / Math.max(1, performance.now() - started);
+    const rows = [
+      `<div class="finding"><strong>YOLOv8</strong>: ${yolo8Detections.length} detection(s), ${lastFps.toFixed(1)} FPS</div>`,
+      ...yolo8Detections.map(d => detectionRow("YOLOv8", d)),
+      `<div class="finding"><strong>YOLOv10</strong>: ${yolo10Detections.length} detection(s), ${fps.toFixed(1)} FPS</div>`,
+      ...yolo10Detections.map(d => detectionRow("YOLOv10", d))
+    ];
+    out.innerHTML = rows.join("");
+  } catch (e) {
+    out.innerHTML = `<div class="muted">YOLOv10 comparison failed: ${e.message || e}</div>`;
+  }
+}
+
+function detectionRow(model, d) {
+  return `<div class="finding">${model} ${d.label} ${Math.round(d.score * 100)}% (${Math.round(d.x1)}, ${Math.round(d.y1)}, ${Math.round(d.x2)}, ${Math.round(d.y2)})</div>`;
 }
 
 function nms(boxes) {
