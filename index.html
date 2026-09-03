@@ -60,6 +60,19 @@
           <canvas id="photoCanvas"></canvas>
           <span id="photoBadge" class="badge">Ready</span>
         </div>
+        <div id="processPanel" class="process-panel hidden">
+          <div class="controls process-tools">
+            <button class="active-tool" onclick="setProcessView('original', this)">Original</button>
+            <button onclick="setProcessView('gray', this)">Grayed</button>
+            <button onclick="setProcessView('canny', this)">Canny edge</button>
+            <button onclick="setProcessView('harris', this)">Harris corner</button>
+            <button onclick="setProcessView('orb', this)">ORB keypoint</button>
+          </div>
+          <div class="viewer process-viewer">
+            <canvas id="processCanvas"></canvas>
+            <span id="processBadge" class="badge">Original</span>
+          </div>
+        </div>
         <div class="controls">
           <button class="primary" onclick="scanPhoto()">Scan photo</button>
           <button onclick="clearPhoto()">Clear</button>
@@ -89,40 +102,16 @@
 
       <h2>Evaluation</h2>
       <div class="eval-box">
-        <div class="controls eval-tools">
-          <select id="truthLabel">
-            <option value="safety-cone">safety-cone</option>
-            <option value="safety-helmet">safety-helmet</option>
-            <option value="safety-vest">safety-vest</option>
-            <option value="safety-glove">safety-glove</option>
-            <option value="safety-shoes">safety-shoes</option>
-            <option value="unsafe-area">unsafe-area</option>
-            <option value="damage">damage</option>
-            <option value="forklift">forklift</option>
-            <option value="cardboard-box">cardboard-box</option>
-          </select>
-          <button onclick="toggleTruthMode()" id="truthModeBtn">Draw box</button>
-          <button onclick="clearTruthBoxes()">Clear boxes</button>
+        <div id="evalMetrics" class="metric-grid">
+          <div><strong>-</strong><span>Objects</span></div>
+          <div><strong>-</strong><span>Avg confidence</span></div>
+          <div><strong>-</strong><span>FPS</span></div>
+          <div><strong>-</strong><span>Resize</span></div>
         </div>
-        <label class="field">
-          <span>Ground truth boxes</span>
-          <textarea id="truthInput" rows="5" placeholder="label,x1,y1,x2,y2&#10;safety-helmet,120,80,260,210"></textarea>
-        </label>
-        <div class="controls two">
-          <button onclick="evaluateLastScan()">Evaluate scan</button>
+        <div class="controls">
           <button onclick="runTransformTests()">Variation test</button>
         </div>
-        <div id="evalMetrics" class="metric-grid">
-          <div><strong>-</strong><span>Accuracy</span></div>
-          <div><strong>-</strong><span>Precision</span></div>
-          <div><strong>-</strong><span>Recall</span></div>
-          <div><strong>-</strong><span>F1</span></div>
-          <div><strong>-</strong><span>Mean IoU</span></div>
-          <div><strong>-</strong><span>mAP@50</span></div>
-          <div><strong>-</strong><span>FPS</span></div>
-          <div><strong>-</strong><span>Detections</span></div>
-        </div>
-        <div id="evalNotes" class="muted">Scan a photo, enter expected boxes, then evaluate.</div>
+        <div id="evalNotes" class="muted">Scan a photo to show automatic metrics.</div>
         <div id="transformResults" class="list"></div>
         <h2>YOLO Comparison</h2>
         <div id="modelCompare" class="list muted">Scan a photo to compare YOLOv8 and YOLOv10.</div>

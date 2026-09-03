@@ -15,9 +15,7 @@ let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
 let lastScan = null;
 let lastFps = 0;
-let truthMode = false;
-let truthStart = null;
-let truthBoxes = [];
+let processMode = "original";
 
 const $ = id => document.getElementById(id);
 
@@ -28,7 +26,6 @@ if ($("verdict")) {
   const user = JSON.parse(sessionStorage.getItem("sv_user") || "null");
   if (!user) location.href = "login.html";
   log("Ready.");
-  setupTruthDrawing();
 }
 
 async function sha256Hex(text) {
@@ -130,6 +127,7 @@ function loadPhoto(e) {
     photoBase64 = reader.result;
     $("photo").src = photoBase64;
     $("photoWrap").classList.remove("hidden");
+    $("processPanel").classList.remove("hidden");
     log("Photo loaded.");
   };
   reader.readAsDataURL(file);
@@ -145,10 +143,9 @@ async function scanPhoto() {
 function clearPhoto() {
   photoBase64 = null;
   lastScan = null;
-  truthBoxes = [];
   $("fileInput").value = "";
-  syncTruthInput();
   $("photoWrap").classList.add("hidden");
+  $("processPanel").classList.add("hidden");
 }
 
 async function analyzeImage(sourceEl, source, canvas, badge) {
@@ -162,7 +159,8 @@ async function analyzeImage(sourceEl, source, canvas, badge) {
     lastFps = 1000 / elapsed;
     lastScan = { sourceEl, width, height, detections, fps: lastFps };
     draw(canvas, detections, width, height);
-    drawTruthBoxes(canvas);
+    renderAutoMetrics(detections, width, height, lastFps);
+    renderProcessView();
     applyResult(classify(detections), source, badge);
     if (source === "photo") compareYoloModels(sourceEl, width, height, detections);
   } catch (e) {
@@ -290,173 +288,102 @@ function overlap(a, b) {
   return inter / (aa + ba - inter || 1);
 }
 
-function parseGroundTruth() {
-  const input = $("truthInput");
-  if (!input) return [];
-  return input.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, index) => {
-    const [label, x1, y1, x2, y2] = line.split(",").map(v => v.trim());
-    const box = { label, x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2) };
-    if (!label || [box.x1, box.y1, box.x2, box.y2].some(Number.isNaN)) {
-      throw new Error(`Invalid ground truth line ${index + 1}. Use label,x1,y1,x2,y2.`);
-    }
-    return box;
-  });
-}
-
-function syncTruthInput() {
-  const input = $("truthInput");
-  if (!input) return;
-  input.value = truthBoxes.map(b => `${b.label},${Math.round(b.x1)},${Math.round(b.y1)},${Math.round(b.x2)},${Math.round(b.y2)}`).join("\n");
-}
-
-function syncTruthBoxesFromInput() {
-  try {
-    truthBoxes = parseGroundTruth();
-    if (lastScan) {
-      draw($("photoCanvas"), lastScan.detections, lastScan.width, lastScan.height);
-      drawTruthBoxes($("photoCanvas"));
-    }
-  } catch (_) {}
-}
-
-function toggleTruthMode() {
-  truthMode = !truthMode;
-  $("truthModeBtn").classList.toggle("active-tool", truthMode);
-  $("evalNotes").textContent = truthMode ? "Draw mode on. Drag on the photo to mark the correct object box." : "Draw mode off.";
-}
-
-function clearTruthBoxes() {
-  truthBoxes = [];
-  syncTruthInput();
-  if (lastScan) {
-    draw($("photoCanvas"), lastScan.detections, lastScan.width, lastScan.height);
-  }
-}
-
-function canvasPoint(e, canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const canvasRatio = canvas.width / canvas.height;
-  const rectRatio = rect.width / rect.height;
-  let left = rect.left, top = rect.top, width = rect.width, height = rect.height;
-  if (rectRatio > canvasRatio) {
-    width = rect.height * canvasRatio;
-    left += (rect.width - width) / 2;
-  } else {
-    height = rect.width / canvasRatio;
-    top += (rect.height - height) / 2;
-  }
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  return {
-    x: Math.max(0, Math.min(canvas.width, (clientX - left) * canvas.width / width)),
-    y: Math.max(0, Math.min(canvas.height, (clientY - top) * canvas.height / height))
-  };
-}
-
-function setupTruthDrawing() {
-  const canvas = $("photoCanvas");
-  const input = $("truthInput");
-  if (!canvas) return;
-  if (input) input.addEventListener("input", syncTruthBoxesFromInput);
-  const start = e => {
-    if (!truthMode || !lastScan) return;
-    e.preventDefault();
-    truthStart = canvasPoint(e, canvas);
-  };
-  const move = e => {
-    if (!truthMode || !truthStart || !lastScan) return;
-    e.preventDefault();
-    const p = canvasPoint(e, canvas);
-    draw(canvas, lastScan.detections, lastScan.width, lastScan.height);
-    drawTruthBoxes(canvas);
-    drawOneTruthBox(canvas, {
-      label: $("truthLabel").value,
-      x1: Math.min(truthStart.x, p.x),
-      y1: Math.min(truthStart.y, p.y),
-      x2: Math.max(truthStart.x, p.x),
-      y2: Math.max(truthStart.y, p.y)
-    });
-  };
-  const end = e => {
-    if (!truthMode || !truthStart || !lastScan) return;
-    e.preventDefault();
-    const p = canvasPoint(e.changedTouches ? e.changedTouches[0] : e, canvas);
-    const box = {
-      label: $("truthLabel").value,
-      x1: Math.min(truthStart.x, p.x),
-      y1: Math.min(truthStart.y, p.y),
-      x2: Math.max(truthStart.x, p.x),
-      y2: Math.max(truthStart.y, p.y)
-    };
-    truthStart = null;
-    if (box.x2 - box.x1 < 6 || box.y2 - box.y1 < 6) return;
-    truthBoxes.push(box);
-    syncTruthInput();
-    draw(canvas, lastScan.detections, lastScan.width, lastScan.height);
-    drawTruthBoxes(canvas);
-  };
-  canvas.addEventListener("pointerdown", start);
-  canvas.addEventListener("pointermove", move);
-  canvas.addEventListener("pointerup", end);
-  canvas.addEventListener("pointercancel", () => { truthStart = null; });
-}
-
-function evaluateDetections(detections, truth, iouThreshold = 0.5) {
-  const matches = [];
-  const usedTruth = new Set();
-  const sorted = [...detections].sort((a, b) => b.score - a.score);
-  for (const det of sorted) {
-    let best = { index: -1, iou: 0 };
-    truth.forEach((gt, index) => {
-      if (usedTruth.has(index) || gt.label !== det.label) return;
-      const iou = overlap(det, gt);
-      if (iou > best.iou) best = { index, iou };
-    });
-    if (best.index >= 0 && best.iou >= iouThreshold) {
-      usedTruth.add(best.index);
-      matches.push({ det, gt: truth[best.index], iou: best.iou });
-    }
-  }
-  const tp = matches.length;
-  const fp = Math.max(0, detections.length - tp);
-  const fn = Math.max(0, truth.length - tp);
-  const precision = tp / (tp + fp || 1);
-  const recall = tp / (tp + fn || 1);
-  const f1 = 2 * precision * recall / (precision + recall || 1);
-  const accuracy = tp / (tp + fp + fn || 1);
-  const meanIou = matches.reduce((sum, m) => sum + m.iou, 0) / (matches.length || 1);
-  const map50 = precision * recall;
-  return { tp, fp, fn, precision, recall, f1, accuracy, meanIou, map50 };
-}
-
 function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
-function renderEval(metrics, detectionCount, truthCount) {
+function renderAutoMetrics(detections, width, height, fps) {
+  const avg = detections.reduce((sum, d) => sum + d.score, 0) / (detections.length || 1);
+  const resizeText = `${width}x${height} to ${INPUT}x${INPUT}`;
   $("evalMetrics").innerHTML = [
-    [formatPercent(metrics.accuracy), "Accuracy"],
-    [formatPercent(metrics.precision), "Precision"],
-    [formatPercent(metrics.recall), "Recall"],
-    [formatPercent(metrics.f1), "F1"],
-    [formatPercent(metrics.meanIou), "Mean IoU"],
-    [formatPercent(metrics.map50), "mAP@50"],
-    [lastScan && lastScan.fps ? lastScan.fps.toFixed(1) : "-", "FPS"],
-    [`${detectionCount}/${truthCount}`, "Detections"]
+    [String(detections.length), "Objects"],
+    [detections.length ? formatPercent(avg) : "0%", "Avg confidence"],
+    [fps ? fps.toFixed(1) : "-", "FPS"],
+    [resizeText, "Resize"]
   ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
-  $("evalNotes").textContent = `TP ${metrics.tp}, FP ${metrics.fp}, FN ${metrics.fn}. IoU match threshold: 50%.`;
+  $("evalNotes").textContent = "Automatic metrics shown. Accuracy, precision, recall, F1, IoU, and mAP need labeled ground-truth data, so YOLOv8 vs YOLOv10 comparison is used instead.";
 }
 
-function evaluateLastScan() {
-  try {
-    if (!lastScan) throw new Error("Scan a camera frame or photo first.");
-    const truth = parseGroundTruth();
-    if (!truth.length) throw new Error("Enter at least one ground truth box.");
-    const metrics = evaluateDetections(lastScan.detections, truth);
-    renderEval(metrics, lastScan.detections.length, truth.length);
-    log("Evaluation metrics updated.");
-  } catch (e) {
-    $("evalNotes").textContent = e.message || "Evaluation failed.";
+function setProcessView(mode, btn) {
+  processMode = mode;
+  document.querySelectorAll(".process-tools button").forEach(b => b.classList.remove("active-tool"));
+  if (btn) btn.classList.add("active-tool");
+  renderProcessView();
+}
+
+function renderProcessView() {
+  if (!lastScan || !$("processCanvas")) return;
+  const canvas = $("processCanvas");
+  canvas.width = lastScan.width;
+  canvas.height = lastScan.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(lastScan.sourceEl, 0, 0, lastScan.width, lastScan.height);
+  if (processMode === "gray") applyGrayscale(ctx, canvas.width, canvas.height);
+  if (processMode === "canny") applyCannyLike(ctx, canvas.width, canvas.height);
+  if (processMode === "harris") applyHarrisLike(ctx, canvas.width, canvas.height);
+  if (processMode === "orb") applyOrbLike(ctx, canvas.width, canvas.height);
+  $("processBadge").textContent = {
+    original: "Original",
+    gray: "Grayed",
+    canny: "Canny edge",
+    harris: "Harris corner",
+    orb: "ORB keypoint"
+  }[processMode];
+}
+
+function applyGrayscale(ctx, width, height) {
+  const img = ctx.getImageData(0, 0, width, height);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const g = img.data[i] * 0.299 + img.data[i + 1] * 0.587 + img.data[i + 2] * 0.114;
+    img.data[i] = g; img.data[i + 1] = g; img.data[i + 2] = g;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function applyCannyLike(ctx, width, height) {
+  applyGrayscale(ctx, width, height);
+  const src = ctx.getImageData(0, 0, width, height);
+  const out = ctx.createImageData(width, height);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = (y * width + x) * 4;
+      const gx = src.data[i + 4] - src.data[i - 4];
+      const gy = src.data[i + width * 4] - src.data[i - width * 4];
+      const v = Math.hypot(gx, gy) > 35 ? 255 : 0;
+      out.data[i] = v; out.data[i + 1] = v; out.data[i + 2] = v; out.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+function applyHarrisLike(ctx, width, height) {
+  applyCannyLike(ctx, width, height);
+  ctx.fillStyle = "#2764d8";
+  for (let y = 12; y < height - 12; y += 12) {
+    for (let x = 12; x < width - 12; x += 12) {
+      const p = ctx.getImageData(x - 1, y - 1, 3, 3).data;
+      const bright = Array.from({ length: 9 }, (_, n) => p[n * 4]).filter(v => v > 180).length;
+      if (bright >= 3 && bright <= 6) ctx.fillRect(x - 2, y - 2, 5, 5);
+    }
+  }
+}
+
+function applyOrbLike(ctx, width, height) {
+  applyGrayscale(ctx, width, height);
+  const src = ctx.getImageData(0, 0, width, height);
+  ctx.putImageData(src, 0, 0);
+  ctx.strokeStyle = "#ffb000";
+  ctx.lineWidth = Math.max(1, width / 700);
+  for (let y = 16; y < height - 16; y += 18) {
+    for (let x = 16; x < width - 16; x += 18) {
+      const i = (y * width + x) * 4;
+      const contrast = Math.abs(src.data[i] - src.data[i + 16]) + Math.abs(src.data[i] - src.data[i + width * 16]);
+      if (contrast > 85) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   }
 }
 
@@ -577,26 +504,6 @@ function draw(canvas, detections, w, h) {
     ctx.fillStyle = "#fff";
     ctx.fillText(label, d.x1 + 6, Math.max(16, d.y1 - 7));
   }
-}
-
-function drawTruthBoxes(canvas) {
-  for (const box of truthBoxes) drawOneTruthBox(canvas, box);
-}
-
-function drawOneTruthBox(canvas, box) {
-  const ctx = canvas.getContext("2d");
-  ctx.save();
-  ctx.lineWidth = Math.max(2, canvas.width / 260);
-  ctx.setLineDash([8, 5]);
-  ctx.strokeStyle = "#2764d8";
-  ctx.fillStyle = "#2764d8";
-  ctx.font = `${Math.max(13, canvas.width / 58)}px Arial`;
-  ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-  const label = `truth: ${box.label}`;
-  ctx.fillRect(box.x1, Math.max(0, box.y1 - 24), ctx.measureText(label).width + 12, 24);
-  ctx.fillStyle = "#fff";
-  ctx.fillText(label, box.x1 + 6, Math.max(16, box.y1 - 7));
-  ctx.restore();
 }
 
 function applyResult(result, source, badge) {
