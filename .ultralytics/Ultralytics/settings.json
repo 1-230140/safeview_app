@@ -1,0 +1,19 @@
+{
+  "settings_version": "0.0.8",
+  "datasets_dir": "C:\\Users\\admin\\OneDrive\\Documents\\GitHub\\datasets",
+  "weights_dir": "C:\\Users\\admin\\OneDrive\\Documents\\GitHub\\safeview_app\\weights",
+  "runs_dir": "C:\\Users\\admin\\OneDrive\\Documents\\GitHub\\safeview_app\\runs",
+  "uuid": "f525994e9c48412a7c39ad3565e0612f7e607b901e9fd5b52bdc5b956e91c7d5",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "mlflow": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": false
+}

@@ -2,7 +2,7 @@ const SUPABASE_URL = "https://zobfhaykmvqsdtdkopuc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-YgL8OtMraWknloMv-YWjA_EY1qhBts";
 const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-const MODEL_PATH = "models/ppe-yolo-3k.onnx";
+const MODEL_PATH = "models/yolov8-ppe-10k-best-final.onnx";
 const YOLOV10_PATH = "models/yolov10-best.onnx";
 const INPUT = 640;
 const CONF = 0.15; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
