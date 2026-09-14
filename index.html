@@ -100,6 +100,19 @@
         <button onclick="exportJson()">Export JSON</button>
       </div>
 
+      <h2>Model Status</h2>
+      <div class="model-status" aria-live="polite">
+        <div><strong>YOLOv8</strong><span id="yolo8State" class="status-idle">Not loaded</span></div>
+        <div><strong>YOLOv10</strong><span id="yolo10State" class="status-idle">Not loaded</span></div>
+      </div>
+
+      <h2>Detection Settings</h2>
+      <div class="threshold-control">
+        <label for="confidenceThreshold">Confidence threshold <strong id="confidenceValue">15%</strong></label>
+        <input id="confidenceThreshold" type="range" min="0.10" max="0.80" step="0.05" value="0.15" oninput="updateConfidenceThreshold(this.value)">
+        <span>Lower values show more possible detections; higher values are stricter.</span>
+      </div>
+
       <h2>Evaluation</h2>
       <div class="eval-box">
         <div id="evalMetrics" class="metric-grid">
@@ -115,6 +128,20 @@
         <div id="transformResults" class="list"></div>
         <h2>YOLO Comparison</h2>
         <div id="modelCompare" class="list muted">Scan a photo to compare YOLOv8 and YOLOv10.</div>
+      </div>
+
+      <h2>Model Information</h2>
+      <div class="info-list">
+        <div><strong>Models</strong><span>YOLOv8 Nano and YOLOv10 Nano</span></div>
+        <div><strong>Input</strong><span>640 x 640 pixels</span></div>
+        <div><strong>Dataset</strong><span>10,000 images, 9 detection classes</span></div>
+        <div><strong>YOLOv10 test metrics</strong><span>Precision 89.2%, Recall 80.6%, mAP@50 87.8%, mAP@50-95 57.2%</span></div>
+      </div>
+
+      <h2>Detection Classes</h2>
+      <div class="info-list">
+        <div><strong>PPE</strong><span>Safety glove, safety helmet, safety shoes, safety vest</span></div>
+        <div><strong>Hazard-related</strong><span>Unsafe area, damage, forklift, cardboard box, safety cone</span></div>
       </div>
     </aside>
   </main>

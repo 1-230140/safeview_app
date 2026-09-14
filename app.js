@@ -5,7 +5,7 @@ const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) :
 const MODEL_PATH = "models/yolov8-ppe-10k-best-final.onnx";
 const YOLOV10_PATH = "models/yolov10-best.onnx";
 const INPUT = 640;
-const CONF = 0.15; // was 0.4 originally, 0.1 for debugging — this should be a good starting point now that classes are correct
+let CONF = 0.15;
 const IOU = 0.45;
 const CLASS_NAMES = ["safety-glove","safety-helmet","safety-shoes","unsafe-area","damage","forklift","safety-vest","cardboard-box","safety-cone"];
 const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
@@ -72,16 +72,43 @@ function setMode(mode) {
 
 async function loadModel() {
   if (session) return session;
-  $("modelState").textContent = "Loading model";
-  session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["webgl", "wasm"] });
-  $("modelState").textContent = "Model ready";
-  return session;
+  setModelState("yolo8", "Loading", "loading");
+  $("modelState").textContent = "Loading YOLOv8";
+  try {
+    session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["webgl", "wasm"] });
+    setModelState("yolo8", "Ready", "ready");
+    $("modelState").textContent = "YOLOv8 ready";
+    return session;
+  } catch (error) {
+    setModelState("yolo8", "Failed to load", "error");
+    $("modelState").textContent = "YOLOv8 failed";
+    throw error;
+  }
 }
 
 async function loadYolo10Model() {
   if (yolo10Session) return yolo10Session;
-  yolo10Session = await ort.InferenceSession.create(YOLOV10_PATH, { executionProviders: ["webgl", "wasm"] });
-  return yolo10Session;
+  setModelState("yolo10", "Loading", "loading");
+  try {
+    yolo10Session = await ort.InferenceSession.create(YOLOV10_PATH, { executionProviders: ["webgl", "wasm"] });
+    setModelState("yolo10", "Ready", "ready");
+    return yolo10Session;
+  } catch (error) {
+    setModelState("yolo10", "Failed to load", "error");
+    throw error;
+  }
+}
+
+function setModelState(model, text, state) {
+  const el = $(model === "yolo8" ? "yolo8State" : "yolo10State");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `status-${state}`;
+}
+
+function updateConfidenceThreshold(value) {
+  CONF = Number(value);
+  $("confidenceValue").textContent = `${Math.round(CONF * 100)}%`;
 }
 
 async function startCamera() {
@@ -200,14 +227,12 @@ async function detectWithSession(s, src, w, h, modelType = "yolov8") {
   if (modelType === "yolov10") return parseYolo10Output(y, w, h, prep);
   const preds = y.dims[y.dims.length - 1];
   const boxes = [];
-  let bestScore = 0, bestCls = -1; // TEMP: debug tracking
   for (let i = 0; i < preds; i++) {
     let score = 0, cls = -1;
     for (let c = 0; c < CLASS_NAMES.length; c++) {
       const v = y.data[(4 + c) * preds + i];
       if (v > score) { score = v; cls = c; }
     }
-    if (score > bestScore) { bestScore = score; bestCls = cls; } // TEMP: debug tracking
     if (score < CONF) continue;
     const cx = y.data[i], cy = y.data[preds + i], bw = y.data[2 * preds + i], bh = y.data[3 * preds + i];
     boxes.push({
@@ -218,7 +243,6 @@ async function detectWithSession(s, src, w, h, modelType = "yolov8") {
       score, label: CLASS_NAMES[cls] || `class_${cls}`
     });
   }
-  console.log(`[debug] best raw score this frame: ${bestScore.toFixed(3)} -> class "${CLASS_NAMES[bestCls] || bestCls}" (index ${bestCls})`); // TEMP: remove after debugging
   return nms(boxes);
 }
 
