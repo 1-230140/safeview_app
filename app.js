@@ -325,7 +325,7 @@ function renderAutoMetrics(detections, width, height, fps) {
     [fps ? fps.toFixed(1) : "-", "FPS"],
     [resizeText, "Resize"]
   ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
-  $("evalNotes").textContent = "Variation tests show detections from this one transformed image. Formal Precision, Recall, F1, mAP, and confusion-matrix results come from the labeled Kaggle test set and appear in Model Information.";
+  $("evalNotes").textContent = "Variation tests show detections from this one transformed image. Formal Precision, Recall, F1, mAP, and confusion-matrix results come from the labeled Kaggle test set and are shown above this variation section.";
 }
 
 function setProcessView(mode, btn) {
