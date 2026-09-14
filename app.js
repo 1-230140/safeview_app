@@ -325,7 +325,7 @@ function renderAutoMetrics(detections, width, height, fps) {
     [fps ? fps.toFixed(1) : "-", "FPS"],
     [resizeText, "Resize"]
   ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
-  $("evalNotes").textContent = "Automatic metrics shown. Accuracy, precision, recall, F1, IoU, and mAP need labeled ground-truth data, so YOLOv8 vs YOLOv10 comparison is used instead.";
+  $("evalNotes").textContent = "Variation tests show detections from this one transformed image. Formal Precision, Recall, F1, mAP, and confusion-matrix results come from the labeled Kaggle test set and appear in Model Information.";
 }
 
 function setProcessView(mode, btn) {
