@@ -2,20 +2,32 @@ const SUPABASE_URL = "https://zobfhaykmvqsdtdkopuc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-YgL8OtMraWknloMv-YWjA_EY1qhBts";
 const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-const MODEL_PATH = "models/yolov8-ppe-10k-best-final.onnx";
-const YOLOV10_PATH = "models/yolov10-best.onnx";
+const API_BASE_URL = "http://127.0.0.1:8001";
 const INPUT = 640;
-let CONF = 0.15;
-const IOU = 0.45;
-const CLASS_NAMES = ["safety-glove","safety-helmet","safety-shoes","unsafe-area","damage","forklift","safety-vest","cardboard-box","safety-cone"];
+let CONF = 0.70;
+const CLASS_NAMES = ["cardboard-box", "forklift", "safety-cone", "safety-vest"];
 const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
 
-let session, yolo10Session, stream, photoBase64, autoTimer;
+let stream, photoBase64, autoTimer;
 let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
 let lastScan = null;
 let lastFps = 0;
 let processMode = "original";
+let activeModel = "fasterrcnn";
+
+const MODEL_OPTIONS = {
+  fasterrcnn: {
+    label: "Faster R-CNN v3",
+    confidence: 0.70,
+    note: "Faster R-CNN: higher test mAP; selected confidence 70%."
+  },
+  yolov10: {
+    label: "YOLOv10n",
+    confidence: 0.25,
+    note: "YOLOv10: lower test mAP but much faster; selected confidence 25%."
+  }
+};
 
 const $ = id => document.getElementById(id);
 
@@ -71,39 +83,41 @@ function setMode(mode) {
 }
 
 async function loadModel() {
-  if (session) return session;
-  setModelState("yolo8", "Loading", "loading");
-  $("modelState").textContent = "Loading YOLOv8";
+  setModelState("fasterRcnnState", "Checking", "loading");
+  setModelState("yolov10State", "Checking", "loading");
+  $("modelState").textContent = "Checking model service";
   try {
-    session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ["webgl", "wasm"] });
-    setModelState("yolo8", "Ready", "ready");
-    $("modelState").textContent = "YOLOv8 ready";
-    return session;
+    const response = await fetch(`${API_BASE_URL}/health`);
+    if (!response.ok) throw new Error("Model service is unavailable.");
+    const status = await response.json();
+    setModelState("fasterRcnnState", status.models.fasterrcnn ? "Available" : "Missing", status.models.fasterrcnn ? "ready" : "error");
+    setModelState("yolov10State", status.models.yolov10 ? "Available" : "Missing", status.models.yolov10 ? "ready" : "error");
+    if (!status.models[activeModel]) throw new Error("Selected model checkpoint is missing.");
+    $("modelState").textContent = `${MODEL_OPTIONS[activeModel].label} ready`;
   } catch (error) {
-    setModelState("yolo8", "Failed to load", "error");
-    $("modelState").textContent = "YOLOv8 failed";
+    setModelState("fasterRcnnState", "Offline", "error");
+    setModelState("yolov10State", "Offline", "error");
+    $("modelState").textContent = "Model service offline";
     throw error;
   }
 }
 
-async function loadYolo10Model() {
-  if (yolo10Session) return yolo10Session;
-  setModelState("yolo10", "Loading", "loading");
-  try {
-    yolo10Session = await ort.InferenceSession.create(YOLOV10_PATH, { executionProviders: ["webgl", "wasm"] });
-    setModelState("yolo10", "Ready", "ready");
-    return yolo10Session;
-  } catch (error) {
-    setModelState("yolo10", "Failed to load", "error");
-    throw error;
-  }
-}
-
-function setModelState(model, text, state) {
-  const el = $(model === "yolo8" ? "yolo8State" : "yolo10State");
+function setModelState(id, text, state) {
+  const el = $(id);
   if (!el) return;
   el.textContent = text;
   el.className = `status-${state}`;
+}
+
+function setActiveModel(model) {
+  activeModel = model;
+  const option = MODEL_OPTIONS[model];
+  CONF = option.confidence;
+  $("confidenceThreshold").value = CONF;
+  $("confidenceValue").textContent = `${Math.round(CONF * 100)}%`;
+  $("modelChoiceNote").textContent = option.note;
+  $("modelState").textContent = `${option.label} selected`;
+  log(`${option.label} selected.`);
 }
 
 function updateConfidenceThreshold(value) {
@@ -180,136 +194,37 @@ async function analyzeImage(sourceEl, source, canvas, badge) {
     await loadModel();
     const width = sourceEl.videoWidth || sourceEl.naturalWidth || sourceEl.width;
     const height = sourceEl.videoHeight || sourceEl.naturalHeight || sourceEl.height;
-    const started = performance.now();
-    const detections = await detect(sourceEl, width, height);
-    const elapsed = Math.max(1, performance.now() - started);
-    lastFps = 1000 / elapsed;
-    lastScan = { sourceEl, width, height, detections, fps: lastFps };
+    const result = await detect(sourceEl);
+    const detections = result.detections;
+    lastFps = 1000 / Math.max(1, result.inference_ms);
+    lastScan = { sourceEl, width, height, detections, fps: lastFps, model: result.model_name };
     draw(canvas, detections, width, height);
     renderAutoMetrics(detections, width, height, lastFps);
     renderProcessView();
     applyResult(classify(detections), source, badge);
-    if (source === "photo") compareYoloModels(sourceEl, width, height, detections);
   } catch (e) {
-    log("Detection failed: " + (e.message || e), "unsafe");
+    log("Detection failed: start the local model service, then try again.", "unsafe");
   }
 }
 
-function preprocess(src, w, h) {
+async function imageBlob(src, width, height) {
   const c = document.createElement("canvas");
-  c.width = INPUT; c.height = INPUT;
+  c.width = width; c.height = height;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#727272"; ctx.fillRect(0, 0, INPUT, INPUT);
-  const scale = Math.min(INPUT / w, INPUT / h);
-  const nw = Math.round(w * scale), nh = Math.round(h * scale);
-  const dx = (INPUT - nw) / 2, dy = (INPUT - nh) / 2;
-  ctx.drawImage(src, 0, 0, w, h, dx, dy, nw, nh);
-  const data = ctx.getImageData(0, 0, INPUT, INPUT).data;
-  const area = INPUT * INPUT;
-  const chw = new Float32Array(3 * area);
-  for (let i = 0; i < area; i++) {
-    chw[i] = data[i * 4] / 255;
-    chw[area + i] = data[i * 4 + 1] / 255;
-    chw[area * 2 + i] = data[i * 4 + 2] / 255;
-  }
-  return { tensor: new ort.Tensor("float32", chw, [1, 3, INPUT, INPUT]), scale, dx, dy };
+  ctx.drawImage(src, 0, 0, width, height);
+  return new Promise(resolve => c.toBlob(resolve, "image/jpeg", 0.92));
 }
 
-async function detect(src, w, h) {
-  const s = await loadModel();
-  return detectWithSession(s, src, w, h, "yolov8");
-}
-
-async function detectWithSession(s, src, w, h, modelType = "yolov8") {
-  const prep = preprocess(src, w, h);
-  const out = await s.run({ [s.inputNames[0]]: prep.tensor });
-  const y = out[s.outputNames[0]];
-  if (modelType === "yolov10") return parseYolo10Output(y, w, h, prep);
-  const preds = y.dims[y.dims.length - 1];
-  const boxes = [];
-  for (let i = 0; i < preds; i++) {
-    let score = 0, cls = -1;
-    for (let c = 0; c < CLASS_NAMES.length; c++) {
-      const v = y.data[(4 + c) * preds + i];
-      if (v > score) { score = v; cls = c; }
-    }
-    if (score < CONF) continue;
-    const cx = y.data[i], cy = y.data[preds + i], bw = y.data[2 * preds + i], bh = y.data[3 * preds + i];
-    boxes.push({
-      x1: Math.max(0, (cx - bw / 2 - prep.dx) / prep.scale),
-      y1: Math.max(0, (cy - bh / 2 - prep.dy) / prep.scale),
-      x2: Math.min(w, (cx + bw / 2 - prep.dx) / prep.scale),
-      y2: Math.min(h, (cy + bh / 2 - prep.dy) / prep.scale),
-      score, label: CLASS_NAMES[cls] || `class_${cls}`
-    });
-  }
-  return nms(boxes);
-}
-
-function parseYolo10Output(y, w, h, prep) {
-  const boxes = [];
-  const dims = y.dims;
-  const rows = dims[dims.length - 2] || 0;
-  const cols = dims[dims.length - 1] || 0;
-  if (cols < 6) return boxes;
-  for (let i = 0; i < rows; i++) {
-    const offset = i * cols;
-    const score = y.data[offset + 4];
-    if (score < CONF) continue;
-    const cls = Math.round(y.data[offset + 5]);
-    boxes.push({
-      x1: Math.max(0, (y.data[offset] - prep.dx) / prep.scale),
-      y1: Math.max(0, (y.data[offset + 1] - prep.dy) / prep.scale),
-      x2: Math.min(w, (y.data[offset + 2] - prep.dx) / prep.scale),
-      y2: Math.min(h, (y.data[offset + 3] - prep.dy) / prep.scale),
-      score,
-      label: CLASS_NAMES[cls] || `class_${cls}`
-    });
-  }
-  return nms(boxes);
-}
-
-async function compareYoloModels(sourceEl, width, height, yolo8Detections) {
-  const out = $("modelCompare");
-  if (!out) return;
-  out.className = "list";
-  out.innerHTML = `<div class="muted">Running YOLOv10 comparison...</div>`;
-  try {
-    const model = await loadYolo10Model();
-    const started = performance.now();
-    const yolo10Detections = await detectWithSession(model, sourceEl, width, height, "yolov10");
-    const fps = 1000 / Math.max(1, performance.now() - started);
-    const rows = [
-      `<div class="finding"><strong>YOLOv8</strong>: ${yolo8Detections.length} detection(s), ${lastFps.toFixed(1)} FPS</div>`,
-      ...yolo8Detections.map(d => detectionRow("YOLOv8", d)),
-      `<div class="finding"><strong>YOLOv10</strong>: ${yolo10Detections.length} detection(s), ${fps.toFixed(1)} FPS</div>`,
-      ...yolo10Detections.map(d => detectionRow("YOLOv10", d))
-    ];
-    out.innerHTML = rows.join("");
-  } catch (e) {
-    out.innerHTML = `<div class="muted">YOLOv10 comparison failed: ${e.message || e}</div>`;
-  }
-}
-
-function detectionRow(model, d) {
-  return `<div class="finding">${model} ${d.label} ${Math.round(d.score * 100)}% (${Math.round(d.x1)}, ${Math.round(d.y1)}, ${Math.round(d.x2)}, ${Math.round(d.y2)})</div>`;
-}
-
-function nms(boxes) {
-  boxes.sort((a, b) => b.score - a.score);
-  const kept = [];
-  for (const b of boxes) {
-    if (kept.every(k => overlap(k, b) < IOU)) kept.push(b);
-  }
-  return kept;
-}
-
-function overlap(a, b) {
-  const x1 = Math.max(a.x1, b.x1), y1 = Math.max(a.y1, b.y1);
-  const x2 = Math.min(a.x2, b.x2), y2 = Math.min(a.y2, b.y2);
-  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-  const aa = (a.x2 - a.x1) * (a.y2 - a.y1), ba = (b.x2 - b.x1) * (b.y2 - b.y1);
-  return inter / (aa + ba - inter || 1);
+async function detect(src) {
+  const width = src.videoWidth || src.naturalWidth || src.width;
+  const height = src.videoHeight || src.naturalHeight || src.height;
+  const blob = await imageBlob(src, width, height);
+  if (!blob) throw new Error("Could not prepare image for detection.");
+  const form = new FormData();
+  form.append("image", blob, "scan.jpg");
+  const response = await fetch(`${API_BASE_URL}/detect?model=${activeModel}&confidence=${CONF}`, { method: "POST", body: form });
+  if (!response.ok) throw new Error("Detection request failed.");
+  return response.json();
 }
 
 function formatPercent(value) {
@@ -320,12 +235,13 @@ function renderAutoMetrics(detections, width, height, fps) {
   const avg = detections.reduce((sum, d) => sum + d.score, 0) / (detections.length || 1);
   const resizeText = `${width}x${height} to ${INPUT}x${INPUT}`;
   $("evalMetrics").innerHTML = [
+    [lastScan && lastScan.model ? lastScan.model : "-", "Model"],
     [String(detections.length), "Objects"],
     [detections.length ? formatPercent(avg) : "0%", "Avg confidence"],
     [fps ? fps.toFixed(1) : "-", "FPS"],
     [resizeText, "Resize"]
   ].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("");
-  $("evalNotes").textContent = "Variation tests show detections from this one transformed image. Formal Precision, Recall, F1, mAP, and confusion-matrix results come from the labeled Kaggle test set and are shown above this variation section.";
+  $("evalNotes").textContent = "Variation tests are exploratory checks using the current image. Formal Precision, Recall, F1, and mAP results above come from the five untouched warehouse test images.";
 }
 
 function setProcessView(mode, btn) {
@@ -488,9 +404,9 @@ async function runTransformTests() {
     for (const [type, label] of tests) {
       const canvas = makeTransformCanvas(lastScan.sourceEl, lastScan.width, lastScan.height, type);
       const started = performance.now();
-      const detections = await detect(canvas, lastScan.width, lastScan.height);
+      const result = await detect(canvas);
       const fps = 1000 / Math.max(1, performance.now() - started);
-      rows.push(`<div class="finding">${label}: ${detections.length} detection(s), ${fps.toFixed(1)} FPS</div>`);
+      rows.push(`<div class="finding">${label}: ${result.detections.length} detection(s), ${fps.toFixed(1)} FPS</div>`);
     }
     out.innerHTML = rows.join("");
     log("Variation tests completed.");
@@ -501,13 +417,12 @@ async function runTransformTests() {
 
 function classify(detections) {
   const bad = detections.filter(d => UNSAFE.has(d.label));
-  const good = detections.filter(d => !UNSAFE.has(d.label));
-  const level = bad.length ? "unsafe" : good.length ? "safe" : "warn";
+  const level = bad.length ? "unsafe" : "warn";
   return {
     level,
-    verdict: level === "unsafe" ? "UNSAFE" : level === "safe" ? "SAFE" : "WARNING",
-    risk: level === "unsafe" ? Math.min(10, 6 + bad.length) : level === "safe" ? 2 : 4,
-    summary: detections.length ? `${detections.length} PPE item(s) detected` : "No PPE detected",
+    verdict: level === "unsafe" ? "HAZARD REVIEW" : "MONITOR",
+    risk: level === "unsafe" ? Math.min(10, 6 + bad.length) : 4,
+    summary: detections.length ? `${detections.length} warehouse object(s) detected` : "No supported object detected",
     findings: detections.map(d => ({ level: UNSAFE.has(d.label) ? "unsafe" : "safe", text: `${d.label} ${Math.round(d.score * 100)}%` }))
   };
 }
@@ -557,7 +472,7 @@ async function saveScan(row) {
     risk_score: row.risk,
     summary: row.summary,
     recommendation: row.level === "unsafe" ? "Correct missing PPE before work continues." : "Continue monitoring.",
-    provider_used: "yolo-local"
+    provider_used: activeModel === "yolov10" ? "yolov10-warehouse" : "fasterrcnn-warehouse-v3"
   }).select("id").single();
   if (res.error || !row.findings.length) return;
   await db.from("findings").insert(row.findings.map(f => ({ scan_id: res.data.id, level: f.level, text: f.text })));

@@ -1,0 +1,53 @@
+image,source,preannotated_boxes,classes,review_required
+warehouse_001.jpg,download (1).jpe,0,none,yes
+warehouse_002.jpg,download (10).jpe,0,none,yes
+warehouse_003.jpg,download (11).jpe,1,forklift,yes
+warehouse_004.jpg,download (12).jpe,0,none,yes
+warehouse_005.jpg,download (13).jpe,1,forklift,yes
+warehouse_006.jpg,download (14).jpe,1,forklift,yes
+warehouse_007.jpg,download (15).jpe,1,forklift,yes
+warehouse_008.jpg,download (16).jpe,0,none,yes
+warehouse_009.jpg,download (17).jpe,1,forklift,yes
+warehouse_010.jpg,download (18).jpe,2,"forklift, safety-vest",yes
+warehouse_011.jpg,download (19).jpe,0,none,yes
+warehouse_012.jpg,download (2).jpe,1,forklift,yes
+warehouse_013.jpg,download (20).jpe,1,safety-vest,yes
+warehouse_014.jpg,download (21).jpe,0,none,yes
+warehouse_015.jpg,download (22).jpe,0,none,yes
+warehouse_016.jpg,download (23).jpe,0,none,yes
+warehouse_017.jpg,download (24).jpe,0,none,yes
+warehouse_018.jpg,download (25).jpe,1,safety-vest,yes
+warehouse_019.jpg,download (26).jpe,4,cardboard-box,yes
+warehouse_020.jpg,download (27).jpe,17,cardboard-box,yes
+warehouse_021.jpg,download (28).jpe,0,none,yes
+warehouse_022.jpg,download (29).jpe,2,"forklift, safety-vest",yes
+warehouse_023.jpg,download (3).jpe,1,safety-vest,yes
+warehouse_024.jpg,download (30).jpe,0,none,yes
+warehouse_025.jpg,download (31).jpe,0,none,yes
+warehouse_026.jpg,download (32).jpe,1,safety-cone,yes
+warehouse_027.jpg,download (33).jpe,1,cardboard-box,yes
+warehouse_028.jpg,download (34).jpe,2,forklift,yes
+warehouse_029.jpg,download (35).jpe,1,safety-vest,yes
+warehouse_030.jpg,download (36).jpe,0,none,yes
+warehouse_031.jpg,download (37).jpe,1,forklift,yes
+warehouse_032.jpg,download (38).jpe,1,forklift,yes
+warehouse_033.jpg,download (39).jpe,1,forklift,yes
+warehouse_034.jpg,download (4).jpe,2,"cardboard-box, safety-vest",yes
+warehouse_035.jpg,download (40).jpe,0,none,yes
+warehouse_036.jpg,download (41).jpe,8,safety-vest,yes
+warehouse_037.jpg,download (42).jpe,2,"forklift, safety-vest",yes
+warehouse_038.jpg,download (43).jpe,2,forklift,yes
+warehouse_039.jpg,download (44).jpe,3,cardboard-box,yes
+warehouse_040.jpg,download (45).jpe,2,safety-vest,yes
+warehouse_041.jpg,download (46).jpe,0,none,yes
+warehouse_042.jpg,download (47).jpe,0,none,yes
+warehouse_043.jpg,download (48).jpe,0,none,yes
+warehouse_044.jpg,download (49).jpe,0,none,yes
+warehouse_045.jpg,download (5).jpe,1,safety-vest,yes
+warehouse_046.jpg,download (50).jpe,0,none,yes
+warehouse_047.jpg,download (51).jpe,1,safety-cone,yes
+warehouse_048.jpg,download (6).jpe,1,safety-cone,yes
+warehouse_049.jpg,download (7).jpe,0,none,yes
+warehouse_050.jpg,download (8).jpe,0,none,yes
+warehouse_051.jpg,download (9).jpe,3,"forklift, safety-vest",yes
+warehouse_052.jpg,download.jpe,0,none,yes

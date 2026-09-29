@@ -1,0 +1,4 @@
+forklift
+cardboard-box
+safety-vest
+safety-cone

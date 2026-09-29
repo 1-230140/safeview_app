@@ -1,1 +1,3 @@
 .ultralytics/
+models/fasterrcnn-warehouse-v3-best.pt
+models/yolov10-warehouse-best.pt

@@ -1,6 +1,5 @@
-const CACHE_NAME = "safeview-v3"; // bump this version number every time you deploy changes
+const CACHE_NAME = "safeview-v4"; // bump this version number every time you deploy changes
 const STATIC_ASSETS = ["login.html", "index.html", "style.css", "app.js", "manifest.json"];
-const MODEL_ASSET = "models/ppe-yolo.onnx";
 
 self.addEventListener("install", event => {
   event.waitUntil(
@@ -25,17 +24,6 @@ self.addEventListener("fetch", event => {
   // and API calls like Supabase inserts should always go straight to network
   if (event.request.method !== "GET") {
     return; // let the browser handle it normally, don't touch it
-  }
-
-  if (url.includes(MODEL_ASSET)) {
-    event.respondWith(
-      caches.match(event.request).then(hit => hit || fetch(event.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
-        return res;
-      }))
-    );
-    return;
   }
 
   event.respondWith(
