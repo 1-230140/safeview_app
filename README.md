@@ -22,5 +22,3 @@ on powershell
 3. In another terminal, serve this folder on port 8000: `.venv\Scripts\python.exe -m http.server 8000`
 4. Open `http://localhost:8000`.
 
-The local model checkpoint is intentionally ignored by Git. This is an academic prototype;
-its five-image test evaluation is too small for operational safety decisions.
