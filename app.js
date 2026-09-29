@@ -3,12 +3,14 @@ const SUPABASE_KEY = "sb_publishable_-YgL8OtMraWknloMv-YWjA_EY1qhBts";
 const db = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const API_BASE_URL = "http://127.0.0.1:8001";
+const YOLOV10_ONNX_PATH = "models/yolov10-warehouse-best.onnx";
 const INPUT = 640;
 let CONF = 0.70;
+const YOLOV10_IOU = 0.45;
 const CLASS_NAMES = ["cardboard-box", "forklift", "safety-cone", "safety-vest"];
 const UNSAFE = new Set(["unsafe-area","damage","forklift","cardboard-box","safety-cone"]);
 
-let stream, photoBase64, autoTimer;
+let yolov10Session, stream, photoBase64, autoTimer;
 let history = [];
 let stats = { total: 0, safe: 0, warn: 0, unsafe: 0 };
 let lastScan = null;
@@ -83,21 +85,41 @@ function setMode(mode) {
 }
 
 async function loadModel() {
+  if (activeModel === "yolov10") return loadYolov10Model();
+  return checkFasterRcnnService();
+}
+
+async function checkFasterRcnnService() {
   setModelState("fasterRcnnState", "Checking", "loading");
-  setModelState("yolov10State", "Checking", "loading");
-  $("modelState").textContent = "Checking model service";
+  $("modelState").textContent = "Checking Faster R-CNN service";
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
     if (!response.ok) throw new Error("Model service is unavailable.");
     const status = await response.json();
     setModelState("fasterRcnnState", status.models.fasterrcnn ? "Available" : "Missing", status.models.fasterrcnn ? "ready" : "error");
-    setModelState("yolov10State", status.models.yolov10 ? "Available" : "Missing", status.models.yolov10 ? "ready" : "error");
-    if (!status.models[activeModel]) throw new Error("Selected model checkpoint is missing.");
-    $("modelState").textContent = `${MODEL_OPTIONS[activeModel].label} ready`;
+    if (!status.models.fasterrcnn) throw new Error("Faster R-CNN checkpoint is missing.");
+    $("modelState").textContent = "Faster R-CNN ready";
   } catch (error) {
     setModelState("fasterRcnnState", "Offline", "error");
-    setModelState("yolov10State", "Offline", "error");
     $("modelState").textContent = "Model service offline";
+    throw error;
+  }
+}
+
+async function loadYolov10Model() {
+  if (yolov10Session) return yolov10Session;
+  setModelState("yolov10State", "Loading", "loading");
+  $("modelState").textContent = "Loading YOLOv10";
+  try {
+    yolov10Session = await ort.InferenceSession.create(YOLOV10_ONNX_PATH, {
+      executionProviders: ["webgl", "wasm"]
+    });
+    setModelState("yolov10State", "Available", "ready");
+    $("modelState").textContent = "YOLOv10 ready";
+    return yolov10Session;
+  } catch (error) {
+    setModelState("yolov10State", "Failed", "error");
+    $("modelState").textContent = "YOLOv10 failed to load";
     throw error;
   }
 }
@@ -118,6 +140,7 @@ function setActiveModel(model) {
   $("modelChoiceNote").textContent = option.note;
   $("modelState").textContent = `${option.label} selected`;
   log(`${option.label} selected.`);
+  loadModel().catch(() => {});
 }
 
 function updateConfidenceThreshold(value) {
@@ -216,6 +239,7 @@ async function imageBlob(src, width, height) {
 }
 
 async function detect(src) {
+  if (activeModel === "yolov10") return detectWithYolov10(src);
   const width = src.videoWidth || src.naturalWidth || src.width;
   const height = src.videoHeight || src.naturalHeight || src.height;
   const blob = await imageBlob(src, width, height);
@@ -225,6 +249,104 @@ async function detect(src) {
   const response = await fetch(`${API_BASE_URL}/detect?model=${activeModel}&confidence=${CONF}`, { method: "POST", body: form });
   if (!response.ok) throw new Error("Detection request failed.");
   return response.json();
+}
+
+function preprocessYolo(src, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = INPUT;
+  canvas.height = INPUT;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#727272";
+  ctx.fillRect(0, 0, INPUT, INPUT);
+  const scale = Math.min(INPUT / width, INPUT / height);
+  const resizedWidth = Math.round(width * scale);
+  const resizedHeight = Math.round(height * scale);
+  const offsetX = (INPUT - resizedWidth) / 2;
+  const offsetY = (INPUT - resizedHeight) / 2;
+  ctx.drawImage(src, 0, 0, width, height, offsetX, offsetY, resizedWidth, resizedHeight);
+
+  const rgba = ctx.getImageData(0, 0, INPUT, INPUT).data;
+  const area = INPUT * INPUT;
+  const chw = new Float32Array(3 * area);
+  for (let index = 0; index < area; index++) {
+    chw[index] = rgba[index * 4] / 255;
+    chw[area + index] = rgba[index * 4 + 1] / 255;
+    chw[area * 2 + index] = rgba[index * 4 + 2] / 255;
+  }
+  return {
+    tensor: new ort.Tensor("float32", chw, [1, 3, INPUT, INPUT]),
+    scale,
+    offsetX,
+    offsetY
+  };
+}
+
+async function detectWithYolov10(src) {
+  const width = src.videoWidth || src.naturalWidth || src.width;
+  const height = src.videoHeight || src.naturalHeight || src.height;
+  const session = await loadYolov10Model();
+  const prep = preprocessYolo(src, width, height);
+  const started = performance.now();
+  const output = await session.run({ [session.inputNames[0]]: prep.tensor });
+  const elapsed = performance.now() - started;
+  const raw = output[session.outputNames[0]];
+  const candidates = raw.dims[raw.dims.length - 1];
+  const detections = [];
+
+  for (let index = 0; index < candidates; index++) {
+    let score = 0;
+    let classId = -1;
+    for (let classIndex = 0; classIndex < CLASS_NAMES.length; classIndex++) {
+      const value = raw.data[(4 + classIndex) * candidates + index];
+      if (value > score) {
+        score = value;
+        classId = classIndex;
+      }
+    }
+    if (score < CONF) continue;
+    const centerX = raw.data[index];
+    const centerY = raw.data[candidates + index];
+    const boxWidth = raw.data[2 * candidates + index];
+    const boxHeight = raw.data[3 * candidates + index];
+    detections.push({
+      x1: Math.max(0, (centerX - boxWidth / 2 - prep.offsetX) / prep.scale),
+      y1: Math.max(0, (centerY - boxHeight / 2 - prep.offsetY) / prep.scale),
+      x2: Math.min(width, (centerX + boxWidth / 2 - prep.offsetX) / prep.scale),
+      y2: Math.min(height, (centerY + boxHeight / 2 - prep.offsetY) / prep.scale),
+      score,
+      label: CLASS_NAMES[classId]
+    });
+  }
+
+  return {
+    detections: nonMaximumSuppression(detections),
+    inference_ms: Math.max(1, elapsed),
+    input_width: width,
+    input_height: height,
+    confidence: CONF,
+    model: "yolov10",
+    model_name: "YOLOv10n"
+  };
+}
+
+function nonMaximumSuppression(detections) {
+  detections.sort((a, b) => b.score - a.score);
+  const kept = [];
+  for (const candidate of detections) {
+    if (kept.every(existing => boxIou(existing, candidate) < YOLOV10_IOU)) kept.push(candidate);
+  }
+  return kept;
+}
+
+function boxIou(a, b) {
+  const x1 = Math.max(a.x1, b.x1);
+  const y1 = Math.max(a.y1, b.y1);
+  const x2 = Math.min(a.x2, b.x2);
+  const y2 = Math.min(a.y2, b.y2);
+  const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const aArea = Math.max(0, a.x2 - a.x1) * Math.max(0, a.y2 - a.y1);
+  const bArea = Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
+  return intersection / (aArea + bArea - intersection || 1);
 }
 
 function formatPercent(value) {

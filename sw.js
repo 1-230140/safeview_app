@@ -1,4 +1,4 @@
-const CACHE_NAME = "safeview-v4"; // bump this version number every time you deploy changes
+const CACHE_NAME = "safeview-v5"; // bump this version number every time you deploy changes
 const STATIC_ASSETS = ["login.html", "index.html", "style.css", "app.js", "manifest.json"];
 
 self.addEventListener("install", event => {
