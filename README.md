@@ -1,8 +1,14 @@
 # SafeView Warehouse Scanner
 
-The final detection path uses `models/fasterrcnn-warehouse-v3-best.pt`: Faster R-CNN
-ResNet50 FPN v2 trained only from the 52 original warehouse images and training-only
-derivatives. It recognizes cardboard boxes, forklifts, safety cones, and safety vests.
+The final detection path offers two models trained only from the 52 original warehouse
+images and training-only derivatives:
+
+- `models/fasterrcnn-warehouse-v3-best.pt`: Faster R-CNN ResNet50 FPN v2, the
+  accuracy-focused option.
+- `models/yolov10-warehouse-best.pt`: YOLOv10n, the speed-focused option.
+
+Both recognize cardboard boxes, forklifts, safety cones, and safety vests. The former
+YOLOv8 PPE model is not part of the app detection path.
 
 Default login: `admin / safeview2025`.
 

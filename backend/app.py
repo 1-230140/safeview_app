@@ -1,6 +1,10 @@
 from io import BytesIO
+import os
 from pathlib import Path
 from time import perf_counter
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ.setdefault("YOLO_CONFIG_DIR", str(ROOT / ".ultralytics"))
 
 import torch
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -12,7 +16,6 @@ from torchvision.transforms.functional import pil_to_tensor
 from ultralytics import YOLO
 
 
-ROOT = Path(__file__).resolve().parents[1]
 FASTER_RCNN_PATH = ROOT / "models" / "fasterrcnn-warehouse-v3-best.pt"
 YOLOV10_PATH = ROOT / "models" / "yolov10-warehouse-best.pt"
 CLASS_NAMES = {1: "cardboard-box", 2: "forklift", 3: "safety-cone", 4: "safety-vest"}

@@ -471,7 +471,7 @@ async function saveScan(row) {
     confidence: row.findings.length ? "High" : "Low",
     risk_score: row.risk,
     summary: row.summary,
-    recommendation: row.level === "unsafe" ? "Correct missing PPE before work continues." : "Continue monitoring.",
+    recommendation: row.level === "unsafe" ? "Review the detected warehouse hazard before work continues." : "Continue monitoring.",
     provider_used: activeModel === "yolov10" ? "yolov10-warehouse" : "fasterrcnn-warehouse-v3"
   }).select("id").single();
   if (res.error || !row.findings.length) return;
