@@ -13,9 +13,12 @@ YOLOv8 PPE model is not part of the app detection path.
 Default login: `admin / safeview2025`.
 
 ## Run locally
-
+on powershell
+  cd "path file of the downloaded clone"
+  1st powershell terminal
 1. Install backend dependencies: `.venv\Scripts\python.exe -m pip install -r backend\requirements.txt`
 2. Start the model API: `.venv\Scripts\python.exe -m uvicorn backend.app:app --host 127.0.0.1 --port 8001`
+   2nd powershell terminal
 3. In another terminal, serve this folder on port 8000: `.venv\Scripts\python.exe -m http.server 8000`
 4. Open `http://localhost:8000`.
 
