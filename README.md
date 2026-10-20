@@ -16,6 +16,7 @@ Default login: `admin / safeview2025`.
 on powershell
   cd "path file of the downloaded clone"
   1st powershell terminal
+  cd "C:\Users\admin\OneDrive\Documents\GitHub\safeview_app" (example)
 1. Install backend dependencies: `.venv\Scripts\python.exe -m pip install -r backend\requirements.txt`
 2. Start the model API: `.venv\Scripts\python.exe -m uvicorn backend.app:app --host 127.0.0.1 --port 8001`
    2nd powershell terminal
